@@ -2,10 +2,27 @@
 //By EuPhobos
 //License GPL v2
 namespace("of_");
-var of_ver = "v2.00";
+var of_ver = "v2.02";
 queue("of_inits", 1000);
 /*
 
+
+v2.02
+Обновление мода до работоспособности в версии игры 4.0.0+
+Исправлена проблема №4 используя новый массив mapTiles от версии игры v4.0+
+
+v2.01
+Ребеланс:
+Количество нефти в предустановленых вышках уменьшено с 1700 -> 250
+Количество нефти в незанятых с 2000 -> 300
+Кол-во нефти в новых нефтевышках установлено в 100
+Горение нефти уменьшено с 10 до 1
+Кол-во новых нефтевыек на игрока установлено в 2
+Новая комманда "of stat" отображает кол-во нефтевышек на карте
+Исправлена проблема №3 от версии 2.00
+
+Проблема 4:
+Новые месторождения могут заспавнится на границе тайла cliff или water
 
 
 v2.00
@@ -19,19 +36,26 @@ rules.js обновлён до версии 3.3.0
 Теперь нефтевышка не исчезает при её уничтожении атакой, а догорает вместе с огнём (Проблема 2 исправлена)
 Если нефтевышек меньше кол-ва игроков, на карте в случайном, но доступном месте появляются новые нефтевышки.
 
+Проблема 3:
+Новые месторождения могут заспавнится внутри строения игрока (баг мода)
+а при уничтожении строения уничтожается с ним физическое месторождение, но не уничтожается логическое (баг игры)
+
 v1.00
 Initial release
 Почти всё задуманное - работает.
 Проверено на версии 3.3.0b1
 
-Проблема 1:
+Проблема 1: (исправлено v2.00)
 Невозможно получить состояние нефтевышки (качает/простаивает)
 Поэтому построенные нефтевышки начинают уменьшать кол-во нефти, даже если не хватает генераторов.
 
-Проблема 2:
+Проблема 2: (исправлено v2.00)
 Невозможно получить состояние горения нефтеточки (не страшно)
 Так как нет способов раньше времени потушить горение нефти,
 То просто в момент взрыва нефтевышки, высчитываем горение нефти + время горения
+
+
+
 
 */
 
@@ -53,11 +77,17 @@ var of_relayControl = true;
 
 //Количество нефти в стартовых месторождениях занятых игроком
 //Amount of oil on the oilwells occupied by player from start of the game
-var of_amountOil = 1700;
+//var of_amountOil = 1700;
+var of_amountOil = 250;
 
 //Количество нефти в стартовых месторождениях не занятых игроком
 //Amount of oil on the free oilwells
-var of_amountFreeOil = 2000;
+//var of_amountFreeOil = 2000;
+var of_amountFreeOil = 300;
+
+//Количество нефти в новых месторождениях
+//var of_amountNewOil = Math.round(of_amountOil/4);
+var of_amountNewOil = 100;
 
 //Истощение точки в секунду при удержании мусорщиками
 //Pumping oil by scavengers in game second
@@ -73,7 +103,11 @@ var of_freeDrain = 0;
 
 //Горение нефти в секунду
 //Buring out oil
-var of_fireDrain = 10;
+var of_fireDrain = 1;
+
+//Сколько дополнительно размещать новых нефтевышек на одного игрока
+//How much extra to place new oil derrick per player (if 4 players, that of_rigsByPlayer=2 it's a 8 rigs always been on map)
+var of_rigsByPlayer = 2;
 
 
 
@@ -86,8 +120,7 @@ var of_burnTime = 60;
 //Максимальный запас, установленный модом
 var of_oilMax = Math.max(of_amountOil, of_amountFreeOil);
 
-//Количество нефти в новых месторождениях
-var of_amountNewOil = Math.round(of_amountOil/4);
+
 
 //Массив скважен
 var of_wells = {};
@@ -121,12 +154,15 @@ function of_inits(){
 	if(!of_init){
 		of_init = true;
 		debugMsg("Mod Running: Oil Finite "+of_ver);
-		debugMsg("Finite oil wells: "+Object.keys(of_wells).length);
+		console("Mod Running: Oil Finite "+of_ver);
+		of_stat();
 	}
 	setTimer("of_iterOils", 1000);
 }
 
-
+function of_stat(){
+	debugMsg("Finite oil wells: "+Object.keys(of_wells).length);
+}
 
 function of_iterOils(){
 	
@@ -171,7 +207,7 @@ function of_iterOils(){
 			}
 			of_burning[o]--;
 			of_wells[o]-=of_fireDrain;
-			debugMsg("oilburn: "+o+":"+of_wells[o]+" "+of_burning[o]);
+//			debugMsg("oilburn: "+o+":"+of_wells[o]+" "+of_burning[o]);
 		}
 	}
 	
@@ -211,19 +247,20 @@ function of_iterOils(){
 				
 				if(of_burning[o]) delete of_burning[o];
 				delete of_wells[o];
+//				of_stat();
 			}
 		}
 	}
 	
 	//Если количество нефтеточек меньше игроков, добавляем рандомно
-	if(of_oilSpawn && Object.keys(of_wells).length < maxPlayers){
+	if(of_oilSpawn && Object.keys(of_wells).length < (maxPlayers*of_rigsByPlayer)){
 //		debugMsg("Oils: "+Object.keys(of_wells).length);
 		var x = syncRandom(mapWidth - 20) + 10;
 		var y = syncRandom(mapHeight - 20) + 10;
 		
 		var reachable = false;
 		for ( var e = 0; e < maxPlayers; ++e ){
-			if(propulsionCanReach("hover01", x, y, startPositions[e].x, startPositions[e].y)){
+			if(propulsionCanReach("hover01", x, y, startPositions[e].x, startPositions[e].y) && !getObject(x, y) && !(MapTiles[y][x]['terrainType'] == 7 || MapTiles[y][x]['terrainType'] == 8) ){
 				reachable = true;
 				break;
 			}
@@ -250,7 +287,7 @@ function of_eventDestroyed(victim){
 	if(victim.type == STRUCTURE && victim.stattype == RESOURCE_EXTRACTOR){
 		//of_wells[victim.x+'x'+victim.y]-=(of_fireDrain*60);
 		if(of_wells[victim.x+'x'+victim.y])debugMsg("Destroy: "+victim.x+'x'+victim.y+':'+of_wells[victim.x+'x'+victim.y]);
-		else debugMsg("Drain out: "+victim.x+'x'+victim.y);
+//		else debugMsg("Drain out: "+victim.x+'x'+victim.y);
 //		debugMsg("Left: "+Object.keys(of_wells).length);
 		of_burning[victim.x+'x'+victim.y]=of_burnTime;
 /*		for(var o in of_wells){
@@ -261,6 +298,11 @@ function of_eventDestroyed(victim){
 }
 
 function of_eventChat(sender, to, message) {
+	
+	if(message == "of stat"){
+		console("Finite oil wells: "+Object.keys(of_wells).length);
+	}
+	
 	if(message == "of mod"){
 		if(of_enabled){
 			debugMsg("Oil Finite "+of_ver+" is enabled");
@@ -302,8 +344,9 @@ function of_eventChat(sender, to, message) {
 }
 
 function of_newWells(id, amount){
-	if(!(typeof of_wells[id] !== 'undefined' && of_wells[id] !== null))debugMsg("oil new "+id+":"+amount);
-	else debugMsg("oil renew "+id+":"+of_wells[id]+"->"+amount);
+//	if(!(typeof of_wells[id] !== 'undefined' && of_wells[id] !== null))debugMsg("oil new "+id+":"+amount);
+//	else debugMsg("oil renew "+id+":"+of_wells[id]+"->"+amount);
+	
 	if(of_burning[id])delete of_burning[id];
 	of_wells[id] = amount;
 }
